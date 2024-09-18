@@ -97,21 +97,26 @@ func Run(parentCtx context.Context, config Config) error {
 	}
 
 	var g errgroup.Group
-	server := server.Server{
-		Addr: config.Server.Port,
-		Handler: router.New(tracer, hook, router.Config{
-			Username: config.Dashboard.Username,
-			Password: config.Dashboard.Password,
-			Realm:    config.Dashboard.Realm,
-		}),
+	if config.Server.Port != "false" {
+		server := server.Server{
+			Addr: config.Server.Port,
+			Handler: router.New(tracer, hook, router.Config{
+				Username: config.Dashboard.Username,
+				Password: config.Dashboard.Password,
+				Realm:    config.Dashboard.Realm,
+			}),
+		}
+
+		logrus.WithField("addr", config.Server.Port).
+			Infoln("starting the server")
+
+		g.Go(func() error {
+			return server.ListenAndServe(ctx)
+		})
+	} else {
+		logrus.
+			Warnln("server is disable due to port value '0'")
 	}
-
-	logrus.WithField("addr", config.Server.Port).
-		Infoln("starting the server")
-
-	g.Go(func() error {
-		return server.ListenAndServe(ctx)
-	})
 
 	// Ping the server and block until a successful connection
 	// to the server has been established.
