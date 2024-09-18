@@ -27,7 +27,18 @@ type Poller struct {
 // Poll opens N connections to the server to poll for pending
 // stages for execution. Pending stages are dispatched to a
 // Runner for execution.
-func (p *Poller) Poll(ctx context.Context, n int) {
+func (p *Poller) Poll(ctx context.Context, n int) error {
+	log := logger.FromContext(ctx).WithField("threads", n)
+
+	isSingleStageMode := n < 1
+
+	if isSingleStageMode {
+		log.Debug("opens a connection to the server to poll for a pending stage for execution in single stage mode")
+		return p.poll(ctx, 1)
+	}
+	
+	log.Debug("opens connections to the server to poll for pending stages for execution")
+
 	var wg sync.WaitGroup
 	for i := 0; i < n; i++ {
 		wg.Add(1)
@@ -45,6 +56,7 @@ func (p *Poller) Poll(ctx context.Context, n int) {
 	}
 
 	wg.Wait()
+	return ctx.Err()
 }
 
 // poll requests a stage for execution from the server, and then
@@ -58,7 +70,7 @@ func (p *Poller) poll(ctx context.Context, thread int) error {
 	stage, err := p.Client.Request(ctx, p.Filter)
 	if err == context.Canceled || err == context.DeadlineExceeded {
 		log.WithError(err).Trace("no stage returned")
-		return nil
+		return err
 	}
 	if err != nil {
 		log.WithError(err).Error("cannot request stage")
@@ -68,7 +80,7 @@ func (p *Poller) poll(ctx context.Context, thread int) error {
 	// exit if a nil or empty stage is returned from the system
 	// and allow the runner to retry.
 	if stage == nil || stage.ID == 0 {
-		return nil
+		return context.Canceled
 	}
 
 	return p.Runner.Run(
