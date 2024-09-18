@@ -30,7 +30,11 @@ import (
 )
 
 // Run runs the service and blocks until complete.
-func Run(ctx context.Context, config Config) error {
+func Run(parentCtx context.Context, config Config) error {
+	ctx, cancelBySingleStageMode := context.WithCancel(parentCtx)
+	defer cancelBySingleStageMode()
+	isScheduledExit := false
+
 	setupLogger(config)
 
 	cli := client.New(
@@ -138,11 +142,32 @@ func Run(ctx context.Context, config Config) error {
 			WithField("type", resource.Type).
 			Infoln("polling the remote server")
 
+		isSingleStageMode := config.Runner.Capacity < 1
+
+		if isSingleStageMode {
+			pollErr := poller.Poll(ctx, 0)
+			if pollErr != nil {
+				logrus.WithError(pollErr).
+					Errorln("failure")
+			} else {
+				// Poller return nil only when successfully finished single stage
+				isScheduledExit = true
+			}
+			cancelBySingleStageMode()
+			return nil
+		}
+
 		poller.Poll(ctx, config.Runner.Capacity)
 		return nil
 	})
 
 	err := g.Wait()
+
+	if err != nil && err == context.Canceled && isScheduledExit {
+		logrus.Infoln("shutting down the server (scheduled)")
+		return nil
+	}
+
 	if err != nil {
 		logrus.WithError(err).
 			Errorln("shutting down the server")
