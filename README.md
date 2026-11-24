@@ -10,3 +10,15 @@ https://community.harness.io/
 
 Issue Tracker and Roadmap:<br/>
 https://trello.com/b/ttae5E5o/drone
+
+## Development
+
+### Build Release
+
+```sh
+./scripts/build_all.sh
+./scripts/bundle.sh
+
+ls -l ./release/*.tar.gz
+cat ./release/drone_runner_exec_checksums.txt
+```
